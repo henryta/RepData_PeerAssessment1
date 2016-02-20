@@ -1,25 +1,159 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Coursera Reproducible Research Assignment"
+output: html_document
 ---
+###This report is the result of a Cousera Reproducible Research Assignment to analyse a person's movement based on data from an activity monitoring device. The dataset used in the report was obtained from https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip (accessed 13-Feb-2016).The objective of the report is to demonstrate to usefulness of R Markdown in Reproducible research.
 
 
-## Loading and preprocessing the data
+### 1. Loading and processing of the data
+```{r eval=TRUE }
+library(dplyr)
+library(ggplot2)
+```
+
+```{r echo = TRUE}
+# read unzipped csv file and convert date field to date format
+activitydata <- read.csv("./activity.csv")
+activitydata$date <- as.Date(activitydata$date)
+```
+
+### 2. Calculating the total number of steps taken per day.
+
+```{r echo = TRUE}
+totals_steps_day <- filter(activitydata, !is.na(steps)) %>% 
+		group_by(date) %>% 
+		summarise(total_steps = sum(steps))
+totals_steps_day
+```
+
+### 3. Histogram of the total number of steps taken each day (excluding missing values)
+```{r echo = TRUE}
+hist(totals_steps_day$total_steps, 
+	main="Histogram of Total Steps taken daily - Missing values excluded",
+	xlab="Total Steps",
+	ylim = c(0,40),
+	border="blue",
+	col="green")
+```	
+
+
+	
+### 4. Calculate and report the mean and median of the total number of steps taken per day
+
+```{r echo = TRUE}
+mean_median_steps_day <- filter(activitydata, !is.na(steps)) %>% 
+		group_by(date) %>% 
+		summarise(mean_steps = mean(steps), median_steps = median(steps))
+mean_median_steps_day
+```
+
+
+### 5. Make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) the average number of steps taken, averaged across all days (y-axis)
+
+```{r echo = TRUE}
+avg_interval_steps <- filter(activitydata, !is.na(steps)) %>% 
+		group_by(interval) %>% 
+		summarise(avg_steps = mean(steps))
+
+plot(avg_interval_steps$interval,avg_interval_steps$avg_steps,
+	type="l",
+	main="5-minute interval vs Avg steps taken",
+	xlab="5-Minute Interval",
+	ylab="Avg Steps Taken")
+```
 
 
 
-## What is mean total number of steps taken per day?
+### 6. Determining the 5-minute interval that, on average, contains the maximum number of steps
+
+```{r echo = TRUE}
+max_interval_steps <- filter(avg_interval_steps, avg_steps==max(avg_interval_steps$avg_steps)) %>% 
+					select(interval)
+max_interval_steps
+```
+
+The 5-minute interval with the maximum average number of steps is:
+```{r }
+max_interval_steps$interval
+```
 
 
 
-## What is the average daily activity pattern?
+### 7. The strategy used to impute the missing values is as follows:  Using a copy of the activitydata data a lookup field is created by combining the day of the week and 5-minute interval number eg.Monday-5, Monday-10, Sunday-100 etc. Using this field another data frame was created with the lookup field and the average number of steps for each day of week-5minute interval combination. The two data frames are then merged by the lookup field and the NA values replaced with this average value. By using this strategy a more accurate estimate of the missing values can be obtained.
+
+#### The total number of missing values in the dataset is:
+```{r echo = TRUE}
+cnt_na <- NROW(activitydata[is.na(activitydata$steps),])
+cnt_na
+```
+
+#### Executing the strategy
+```{r echo = TRUE}
+#Copy data set and add a lookup field
+activitydata2 <- activitydata
+activitydata2$lookup <- paste(weekdays(activitydata2$date),"-",activitydata2$interval)
+
+#Create data frame with average steps for lookup field
+avg_interval_steps_day <- filter(activitydata2, !is.na(steps)) %>% 
+		group_by(lookup) %>% 
+		summarise(avg_steps = round(mean(steps),0)) 
+
+#Merge data sets by lookup field
+merged <- merge(activitydata2,avg_interval_steps_day, by.x = "lookup", by.y = "lookup",sort = FALSE)
+
+#Replace missing values with average from lookup field
+merged$steps_new <- ifelse(is.na(merged$steps),merged$avg_steps,merged$steps)
+```
+
+
+### 8. Histogram of the total number of steps taken each day after missing values are imputed 
+
+```{r echo = TRUE}
+##mean and median total number of steps taken per day.
+
+totals_steps_day2 <- filter(merged, !is.na(steps_new)) %>% 
+		group_by(date) %>% 
+		summarise(total_steps = sum(steps_new))
+
+# Histogram of the total number of steps taken each day
+hist(totals_steps_day2$total_steps, 
+	main="Histogram of Total Steps taken daily - Missing values Imputed",
+	xlab="Total Steps",
+	ylim = c(0,40),
+	border="blue",
+	col="green")
+```
+
+
+#### Calculating mean and median of total number of steps taken daily
+```{r echo = TRUE}
+    mean_median_steps_day2 <- filter(merged, !is.na(steps_new)) %>% 
+		group_by(date) %>% 
+		summarise(mean_steps = mean(steps_new), median_steps = median(steps_new))
+    mean_median_steps_day2
+```
 
 
 
-## Imputing missing values
+
+### 9. Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+
+```{r echo = TRUE}
+#Insert column to hold day type
+merged$day_type <- ifelse(weekdays(merged$date) %in% c("Saturday","Sunday"),"Weekend","Weekday")
+
+#summarise data by day type
+day_type_summary <- merged %>% group_by(day_type,interval) %>% 
+		summarise(avg_steps = mean(steps_new))
+
+#plot chart
+qplot(interval,avg_steps, 
+	data = day_type_summary, 
+	facets = day_type~. , 
+	geom = c("line"),
+	xlab = "5-minute Interval",
+	ylab = "Average Number of Steps",
+	main = "Comparison of Weekday and Weekend Activity patterns")
+```
 
 
-
-## Are there differences in activity patterns between weekdays and weekends?
